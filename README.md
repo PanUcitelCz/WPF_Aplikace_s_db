@@ -985,39 +985,100 @@ Necháme uživatele **vybrat** hodnotu místo psaní. V mřížce použijeme `Da
 **S komentáři (každý řádek):**
 
 ```xml
-<Window xmlns:sys="clr-namespace:System;assembly=System.Runtime">
-  <DataGrid.Columns>
-    <DataGridComboBoxColumn Header="Ročník"
-        SelectedItemBinding="{Binding Year, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-      <DataGridComboBoxColumn.ItemsSource>
-        <x:Array Type="{x:Type sys:Int32}">
-          <sys:Int32>1</sys:Int32>
-          <sys:Int32>2</sys:Int32>
-          <sys:Int32>3</sys:Int32>
-          <sys:Int32>4</sys:Int32>
-          <sys:Int32>5</sys:Int32>
-          <sys:Int32>6</sys:Int32>
-        </x:Array>
-      </DataGridComboBoxColumn.ItemsSource>
-    </DataGridComboBoxColumn>
-  </DataGrid.Columns>
+<!--
+  KOŘEN OKNA: přidej tento namespace, aby šlo v XAMLu použít System.Int32 jako <sys:Int32>…</sys:Int32>
+  Bez něj by x:Array s čísly nešlo sestavit.
+-->
+<Window
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"           <!-- WPF prvky -->
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"                       <!-- XAML rozšíření (x:...) -->
+  xmlns:sys="clr-namespace:System;assembly=System.Runtime"                     <!-- NOVÉ: mapuje System.Int32 na prefix 'sys' -->
+  x:Class="WPF_Aplikace_s_db.MainWindow"
+  Title="Students" Height="520" Width="800">
 
-  <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-    <ComboBox x:Name="TxtYear" Width="60" IsEditable="False" SelectedIndex="-1" ToolTip="Vyberte ročník 1–6">
-      <ComboBox.ItemsSource>
-        <x:Array Type="{x:Type sys:Int32}">
-          <sys:Int32>1</sys:Int32>
-          <sys:Int32>2</sys:Int32>
-          <sys:Int32>3</sys:Int32>
-          <sys:Int32>4</sys:Int32>
-          <sys:Int32>5</sys:Int32>
-          <sys:Int32>6</sys:Int32>
-        </x:Array>
-      </ComboBox.ItemsSource>
-    </ComboBox>
-    <!-- ostatní prvky formuláře beze změny -->
-  </StackPanel>
+  <Grid Margin="12">
+
+    <!-- ===================================== -->
+    <!--   S L O U P E C   V   D A T A G R I D -->
+    <!-- ===================================== -->
+
+    <DataGrid x:Name="StudentsGrid"
+              AutoGenerateColumns="False"
+              CanUserAddRows="False"
+              IsReadOnly="False">
+      <DataGrid.Columns>
+
+        <!--
+          Ročník jako rozbalovací seznam v mřížce:
+          - SelectedItemBinding={Binding Year}: dvoucestná vazba přímo na Student.Year (int).
+          - Mode=TwoWay: změny v UI se zapisují do modelu a naopak.
+          - UpdateSourceTrigger=PropertyChanged: zapisuje se okamžitě při změně výběru (ne až po opuštění buňky).
+        -->
+        <DataGridComboBoxColumn Header="Ročník"
+            SelectedItemBinding="{Binding Year, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+
+          <!--
+            Nabídka hodnot 1..6 pro tento sloupec.
+            x:Array vytvoří pole zadaného typu (zde sys:Int32 = System.Int32).
+            Díky xmlns:sys můžeme přímo zapsat <sys:Int32>1</sys:Int32> atd.
+          -->
+          <DataGridComboBoxColumn.ItemsSource>
+            <x:Array Type="{x:Type sys:Int32}">
+              <sys:Int32>1</sys:Int32>
+              <sys:Int32>2</sys:Int32>
+              <sys:Int32>3</sys:Int32>
+              <sys:Int32>4</sys:Int32>
+              <sys:Int32>5</sys:Int32>
+              <sys:Int32>6</sys:Int32>
+            </x:Array>
+          </DataGridComboBoxColumn.ItemsSource>
+
+        </DataGridComboBoxColumn>
+
+        <!-- (ostatní sloupce beze změny, příklad) -->
+        <DataGridTextColumn Header="ID"        Binding="{Binding Id}"        Width="70"/>
+        <DataGridTextColumn Header="Jméno"     Binding="{Binding FirstName}" Width="*"/>
+        <DataGridTextColumn Header="Příjmení"  Binding="{Binding LastName}"  Width="*"/>
+        <DataGridTextColumn Header="E-mail"    Binding="{Binding Email}"     Width="2*"/>
+        <DataGridTextColumn Header="Vytvořeno"
+                            Binding="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}"
+                            Width="180"/>
+
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <!-- ====================================== -->
+    <!--   F O R M U L Á Ř   D O L E (řádek 2)  -->
+    <!-- ====================================== -->
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+
+      <!--
+        Místo TextBoxu použijeme ComboBox s hodnotami 1..6:
+        - IsEditable="False": uživatel nepíše, jen vybírá (zabrání nevalidním hodnotám).
+        - SelectedIndex="-1": nic není předvybráno (volitelné).
+        - ItemsSource: stejné x:Array sys:Int32 jako v mřížce.
+      -->
+      <ComboBox x:Name="TxtYear" Width="60" IsEditable="False" SelectedIndex="-1" ToolTip="Vyberte ročník 1–6">
+        <ComboBox.ItemsSource>
+          <x:Array Type="{x:Type sys:Int32}">
+            <sys:Int32>1</sys:Int32>
+            <sys:Int32>2</sys:Int32>
+            <sys:Int32>3</sys:Int32>
+            <sys:Int32>4</sys:Int32>
+            <sys:Int32>5</sys:Int32>
+            <sys:Int32>6</sys:Int32>
+          </x:Array>
+        </ComboBox.ItemsSource>
+      </ComboBox>
+
+      <!-- ostatní prvky formuláře beze změny (Jméno, Příjmení, E-mail, tlačítko Přidat) -->
+
+    </StackPanel>
+
+  </Grid>
 </Window>
+
 ```
 
 ---
