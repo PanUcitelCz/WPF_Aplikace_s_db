@@ -185,38 +185,63 @@ namespace WPF_Aplikace_s_db.Data
 **S komentáři (každý řádek):**
 
 ```csharp
-using Microsoft.EntityFrameworkCore;        // EF Core: DbContext, DbSet, UseSqlServer
-using System.Collections.Generic;           // List<T> (seed)
-using System.Linq;                           // LINQ (Any, OrderBy, ToList)
+using Microsoft.EntityFrameworkCore;        // EF Core: obsahuje DbContext, DbSet<T>, UseSqlServer(...) atd.
+using System.Collections.Generic;           // List<T> pro vytvoření seznamu seed dat
+using System.Linq;                          // LINQ: Any(), ToList(), OrderBy(...) apod.
 
-namespace WPF_Aplikace_s_db.Data             // datová vrstva
+namespace WPF_Aplikace_s_db.Data            // Datová vrstva aplikace (modely + kontext)
 {
-    public class StudentContext : DbContext  // kontext = připojení k DB + sada entit
+    // DĚDIČNOST:
+    //  - "StudentContext : DbContext" znamená, že StudentContext PŘEBÍRÁ (dědí) vlastnosti a chování třídy DbContext.
+    //  - DbContext je základní třída EF Core (z balíčku Microsoft.EntityFrameworkCore),
+    //    která umí sledovat entity (tracking), navazovat připojení k DB a provádět CRUD operace.
+    //  - Díky dědičnosti získáváme metody jako SaveChanges(), Set<T>(), Database.EnsureCreated() atd.
+    public class StudentContext : DbContext
     {
-        public DbSet<Student> Students => Set<Student>(); // tabulka Students (CRUD přes EF)
+        // DbSet = "virtuální tabulka". EF Core z toho odvodí tabulku Students.
+        // Umožňuje provádět dotazy (LINQ) i CRUD nad entitou Student.
+        public DbSet<Student> Students => Set<Student>();
 
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) // připojení
+        // Konfigurace připojení do DB.
+        // Přepisujeme (override) metodu z DbContextu, abychom určili, JAKÝ poskytovatel databáze použít.
+        // ZDE: SQL Server (LocalDB) přes UseSqlServer(connectionString).
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            if (!optionsBuilder.IsConfigured)                 // pokud už není nakonfigurováno
+            // Opatrnost: pokud už je kontext nakonfigurovaný jinde (např. DI v ASP.NET), nesahej na to znovu.
+            if (!optionsBuilder.IsConfigured)
             {
-                optionsBuilder.UseSqlServer(                  // SQL Server provider
-                    "Data Source=(localdb)\\MSSQLLocalDB;" +  // LocalDB instance
-                    "Initial Catalog=StudentDbDemo1;" +       // jméno DB
-                    "Integrated Security=True;" +             // Windows autentizace
-                    "TrustServerCertificate=True");           // bez potíží s certifikátem
+                // UseSqlServer je rozšiřující metoda z balíčku Microsoft.EntityFrameworkCore.SqlServer
+                // a nastaví EF Core, aby používal SQL Server (včetně LocalDB) jako cíl databáze.
+                optionsBuilder.UseSqlServer(
+                    "Data Source=(localdb)\\MSSQLLocalDB;" +  // LocalDB = lokální vývojový SQL Server
+                    "Initial Catalog=StudentDbDemo1;" +       // název databáze (vytvoří se automaticky)
+                    "Integrated Security=True;" +             // přihlášení Windows účtem
+                    "TrustServerCertificate=True"             // ignoruj ověření certifikátu (pro LocalDB v pohodě)
+                );
             }
         }
 
-        public void EnsureCreatedAndSeed()    // pomocná metoda při startu
+        // Pomocná metoda, kterou voláme při startu aplikace:
+        // 1) zajistí existenci DB (pokud chybí → vytvoří),
+        // 2) naplní tabulku Students vzorovými daty (jen když je prázdná).
+        public void EnsureCreatedAndSeed()
         {
-            Database.EnsureCreated();         // vytvoří DB (pokud chybí)
-            SeedIfEmpty();                    // naplní vzorovými daty
+            // Database.EnsureCreated():
+            //  - Vytvoří databázi a schéma TABULEK podle modelu, pokud ještě neexistuje.
+            //  - NENÍ to totéž co migrace (Migrations)! Pro jednoduché demo je ale ideální.
+            Database.EnsureCreated();
+
+            // Naplnění počátečními daty (seed), pokud je tabulka prázdná.
+            SeedIfEmpty();
         }
 
-        public void SeedIfEmpty()             // seed pouze když je prázdná tabulka
+        // Seed dat (jen jednorázově, když v DB nic není).
+        public void SeedIfEmpty()
         {
+            // LINQ Any(): zkontroluje, zda existuje alespoň jeden řádek.
             if (!Students.Any())
             {
+                // Sestav vzorovou kolekci studentů
                 var initial = new List<Student>
                 {
                     new Student { FirstName="Jan",   LastName="Novák",    Year=1, Email="jan.novak@example.com" },
@@ -230,12 +255,17 @@ namespace WPF_Aplikace_s_db.Data             // datová vrstva
                     new Student { FirstName="Jana",  LastName="Horáková", Year=3, Email="jana.horakova@example.com" },
                     new Student { FirstName="Filip", LastName="Král",     Year=1, Email="filip.kral@example.com" }
                 };
-                Students.AddRange(initial);   // vlož data do kontextu
-                SaveChanges();                // ulož do DB
+
+                // Přidej celou sadu do kontextu (pending changes)
+                Students.AddRange(initial);
+
+                // Persistuj změny do databáze: EF vygeneruje INSERTy a uloží je do SQL Serveru.
+                SaveChanges();
             }
         }
     }
 }
+
 ```
 
 ### 1C) `MainWindow.xaml` — DataGrid **jen pro čtení**
@@ -268,26 +298,77 @@ namespace WPF_Aplikace_s_db.Data             // datová vrstva
 **S komentáři (každý řádek):**
 
 ```xml
-<Window x:Class="WPF_Aplikace_s_db.MainWindow"               <!-- code-behind třída -->
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Students" Height="450" Width="800">
-  <Grid Margin="12">
-    <DataGrid x:Name="StudentsGrid"
-              AutoGenerateColumns="False"   <!-- sloupce definujeme níže -->
-              CanUserAddRows="False"        <!-- bez prázdného přidávacího řádku -->
-              IsReadOnly="True">            <!-- Úkoly 1–2: pouze čtení -->
+<!--
+  DŮLEŽITÉ PRO VAZBY (Binding):
+  - V code-behind nastavíš: StudentsGrid.ItemsSource = _studentsView;  (_studentsView je pohled nad ObservableCollection<Student>)
+  - Každý řádek DataGridu má pak DataContext = JEDNA instance Student.
+  - Binding v každém sloupci (např. {Binding FirstName}) čte/zapisuje přímo do vlastnosti té řádkové instance Student.FirstName.
+-->
+
+<Window
+  x:Class="WPF_Aplikace_s_db.MainWindow"               <!-- Třída code-behind, která toto XAML obsluhuje -->
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"  <!-- Jmenný prostor pro WPF prvky -->
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"             <!-- Jmenný prostor pro XAML rozšíření (x:Name apod.) -->
+  Title="Students" Height="450" Width="800">                          <!-- Titulek okna a počáteční velikost -->
+
+  <!-- Grid = hlavní rozvržení okna (jedna buňka s vnitřním okrajem) -->
+  <Grid Margin="12">                                                  <!-- Vnitřní okraj obsahu okna -->
+
+    <!-- DataGrid = tabulka, kde každý řádek reprezentuje jeden Student z ItemsSource -->
+    <DataGrid
+      x:Name="StudentsGrid"                                           <!-- Název prvku pro přístup v C# (StudentsGrid.ItemsSource = ...) -->
+      AutoGenerateColumns="False"                                     <!-- Sloupce definujeme ručně (plná kontrola) -->
+      CanUserAddRows="False"                                          <!-- Skryje prázdný „*“ řádek pro ruční přidávání -->
+      IsReadOnly="False">                                             <!-- Povolit editaci buněk (TwoWay binding u textových sloupců) -->
+
+      <!-- Ručně definované sloupce. Každý Binding míří na vlastnost TŘÍDY Student. -->
       <DataGrid.Columns>
-        <DataGridTextColumn Header="ID"        Binding="{Binding Id}"        Width="70"/>
-        <DataGridTextColumn Header="Jméno"     Binding="{Binding FirstName}" Width="*"/>
-        <DataGridTextColumn Header="Příjmení"  Binding="{Binding LastName}"  Width="*"/>
-        <DataGridTextColumn Header="Ročník"    Binding="{Binding Year}"      Width="90"/>
-        <DataGridTextColumn Header="E‑mail"    Binding="{Binding Email}"     Width="2*"/>
-        <DataGridTextColumn Header="Vytvořeno" Binding="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}" Width="180"/>
+
+        <!-- ID (primární klíč) -->
+        <DataGridTextColumn
+          Header="ID"                                                 <!-- Text v záhlaví sloupce -->
+          Binding="{Binding Id}"                                      <!-- Čti/Zapiš Student.Id (číselná vlastnost) -->
+          Width="70"/>                                                <!-- Pevná šířka 70 px -->
+
+        <!-- Jméno (FirstName) -->
+        <DataGridTextColumn
+          Header="Jméno"
+          Binding="{Binding FirstName}"                               <!-- Čti/Zapiš Student.FirstName. 
+                                                                          Výchozí mód u DataGridTextColumn je TwoWay,
+                                                                          takže po potvrzení editace se hodnota propíše zpět. -->
+          Width="*"/>                                                 <!-- Hvězdičková šířka = adaptivně vyplní prostor -->
+
+        <!-- Příjmení (LastName) -->
+        <DataGridTextColumn
+          Header="Příjmení"
+          Binding="{Binding LastName}"                                <!-- Čti/Zapiš Student.LastName -->
+          Width="*"/>
+
+        <!-- Ročník (Year) -->
+        <DataGridTextColumn
+          Header="Ročník"
+          Binding="{Binding Year}"                                    <!-- Čti/Zapiš Student.Year (int). 
+                                                                          Později lze nahradit DataGridComboBoxColumn (1–6). -->
+          Width="90"/>                                                <!-- Pevná šířka, aby číslo nebylo nalepené -->
+
+        <!-- E-mail (Email) -->
+        <DataGridTextColumn
+          Header="E-mail"
+          Binding="{Binding Email}"                                   <!-- Čti/Zapiš Student.Email (string) -->
+          Width="2*"/>                                                <!-- Dvojnásobný podíl šířky oproti sloupcům se * -->
+
+        <!-- Vytvořeno (CreatedAt) s formátováním -->
+        <DataGridTextColumn
+          Header="Vytvořeno"
+          Binding="{Binding CreatedAt,                                 <!-- Čti Student.CreatedAt (DateTime) -->
+                            StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}"   <!-- Vykresli s .NET formátem; {} uniká XAML markup -->
+          Width="180"/>                                               <!-- Pevná šířka pro konzistentní zobrazení data/času -->
+
       </DataGrid.Columns>
     </DataGrid>
   </Grid>
 </Window>
+
 ```
 
 ### 1D) `MainWindow.xaml.cs` — načtení dat (čtení)
@@ -338,41 +419,42 @@ namespace WPF_Aplikace_s_db
 **S komentáři (každý řádek):**
 
 ```csharp
-using System.Collections.ObjectModel;                 // ObservableCollection = živá kolekce pro UI
-using System.ComponentModel;                         // ICollectionView + třídění
+using System.Collections.ObjectModel;                 // ObservableCollection = kolekce pro UI
+using System.ComponentModel;                         // ICollectionView + třídění/filtrování
 using System.Linq;                                   // LINQ (OrderBy, ToList)
-using System.Windows;                                // WPF okno
-using System.Windows.Data;                           // CollectionViewSource
-using WPF_Aplikace_s_db.Data;                        // modely a StudentContext
+using System.Windows;                                // Window, základní WPF typy
+using System.Windows.Data;                           // CollectionViewSource.GetDefaultView
+using WPF_Aplikace_s_db.Data;                        // modely + StudentContext
 
-namespace WPF_Aplikace_s_db
+namespace WPF_Aplikace_s_db                           // jmenný prostor aplikace
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window         // okno MainWindow (navázané na XAML)
     {
         private readonly StudentContext _db = new StudentContext();       // EF Core kontext
         private readonly ObservableCollection<Student> _students = new(); // kolekce pro grid
-        private ICollectionView _studentsView;                             // pohled (sort/filter)
+        private ICollectionView _studentsView;                             // wrapper pro třídění atd.
 
-        public MainWindow()
+        public MainWindow()                               // konstruktor okna
         {
-            InitializeComponent();                        // vytvoří UI z XAML
-            _db.EnsureCreatedAndSeed();                   // vytvoří DB a seeduje data
+            InitializeComponent();                        // vygeneruje UI prvky z XAML
 
-            foreach (var s in _db.Students.OrderBy(x => x.Id).ToList()) // načtení a seřazení
-                _students.Add(s);                         // vložení do kolekce
+            _db.EnsureCreatedAndSeed();                   // vytvoř DB a naplň výchozími daty (pokud prázdná)
 
-            _studentsView = CollectionViewSource.GetDefaultView(_students); // obal nad kolekcí
-            _studentsView.SortDescriptions.Clear();                         // vyčištění starého třídění
+            foreach (var s in _db.Students.OrderBy(x => x.Id).ToList()) // načti studenty seřazené dle Id
+                _students.Add(s);                         // vlož do kolekce (DataGrid se sám obnoví)
+
+            _studentsView = CollectionViewSource.GetDefaultView(_students); // pohled nad kolekcí
+            _studentsView.SortDescriptions.Clear();                         // pro jistotu vyčisti třídění
             _studentsView.SortDescriptions.Add(                             
-                new SortDescription(nameof(Student.Id), ListSortDirection.Ascending)); // řazení dle Id
+                new SortDescription(nameof(Student.Id), ListSortDirection.Ascending)); // seřaď podle Id
 
-            StudentsGrid.ItemsSource = _studentsView;     // napojení do DataGridu
+            StudentsGrid.ItemsSource = _studentsView;     // propojení gridu s daty
         }
 
-        protected override void OnClosed(System.EventArgs e) // při zavření okna
+        protected override void OnClosed(System.EventArgs e) // zavírání okna
         {
-            _db.Dispose();                                // uzavři DB připojení
-            base.OnClosed(e);
+            _db.Dispose();                                // uvolni DB připojení
+            base.OnClosed(e);                             // základní chování
         }
     }
 }
@@ -420,32 +502,107 @@ namespace WPF_Aplikace_s_db
 **S komentáři (každý řádek):**
 
 ```xml
+<!-- Hlavní kontejner okna: Grid = mřížka pro rozložení prvků do řádků/sloupců -->
 <Grid Margin="12">
-  <Grid.RowDefinitions>                                  <!-- 2 řádky: mřížka + formulář -->
+  <!-- Definice řádků mřížky (shora dolů) -->
+  <Grid.RowDefinitions>
+    <!-- 1. řádek: výška * (hvězdičková) = vyplní dostupný prostor → DataGrid -->
     <RowDefinition Height="*"/>
+    <!-- 2. řádek: výška Auto = podle obsahu → formulář pro přidání -->
     <RowDefinition Height="Auto"/>
   </Grid.RowDefinitions>
 
-  <DataGrid x:Name="StudentsGrid" Grid.Row="0"           <!-- pořád jen čtení -->
-            AutoGenerateColumns="False"
-            CanUserAddRows="False"
-            IsReadOnly="True">
+  <!-- DataGrid = tabulkový výpis studentů -->
+  <DataGrid
+      x:Name="StudentsGrid"            <!-- Jméno prvku pro přístup v code-behind (C#) -->
+      Grid.Row="0"                     <!-- Umístění do 1. řádku mřížky (indexování od 0) -->
+      AutoGenerateColumns="False"      <!-- Sloupce si definujeme ručně (viz níže) -->
+      CanUserAddRows="False"           <!-- Skryje prázdný řádek „*“ pro ruční přidávání -->
+      IsReadOnly="True">               <!-- V Úkolu 1–2 pouze čtení; editace až v Úkolu 3 -->
+
+    <!-- Ručně definované sloupce DataGridu (pořadí = zleva doprava) -->
     <DataGrid.Columns>
-      <DataGridTextColumn Header="ID"        Binding="{Binding Id}"        Width="70"/>
-      <DataGridTextColumn Header="Jméno"     Binding="{Binding FirstName}" Width="*"/>
-      <DataGridTextColumn Header="Příjmení"  Binding="{Binding LastName}"  Width="*"/>
-      <DataGridTextColumn Header="Ročník"    Binding="{Binding Year}"      Width="90"/>
-      <DataGridTextColumn Header="E‑mail"    Binding="{Binding Email}"     Width="2*"/>
-      <DataGridTextColumn Header="Vytvořeno" Binding="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}" Width="180"/>
+
+      <!-- Sloupec ID (číselný primární klíč) -->
+      <DataGridTextColumn
+          Header="ID"                  <!-- Záhlaví sloupce v UI -->
+          Binding="{Binding Id}"       <!-- Vazba na vlastnost 'Id' objektu Student -->
+          Width="70"/>                 <!-- Pevná šířka 70 px -->
+
+      <!-- Sloupec Jméno (FirstName) -->
+      <DataGridTextColumn
+          Header="Jméno"               <!-- Titulek hlavičky -->
+          Binding="{Binding FirstName}"<!-- Jednosměrná vazba (do Úkolu 3 bez TwoWay) -->
+          Width="*"/>                  <!-- Hvězdičková šířka = vyplní zbytek místa rovnoměrně -->
+
+      <!-- Sloupec Příjmení (LastName) -->
+      <DataGridTextColumn
+          Header="Příjmení"
+          Binding="{Binding LastName}"
+          Width="*"/>
+
+      <!-- Sloupec Ročník (Year) -->
+      <DataGridTextColumn
+          Header="Ročník"
+          Binding="{Binding Year}"
+          Width="90"/>                 <!-- Pevná šířka ~90 px, aby číslo nebylo „nalepené“ -->
+
+      <!-- Sloupec E-mail (Email) -->
+      <DataGridTextColumn
+          Header="E-mail"
+          Binding="{Binding Email}"
+          Width="2*"/>                 <!-- Dvojnásobná hvězdičková šířka = širší než Jméno/Příjmení -->
+
+      <!-- Sloupec Vytvořeno (CreatedAt) s formátováním data/času -->
+      <DataGridTextColumn
+          Header="Vytvořeno"
+          Binding="{Binding CreatedAt,
+                            StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}"
+          Width="180"/>
+      <!-- Pozn.: StringFormat s prázdným prefixem {} potlačí interpretaci jako markup
+           a aplikuje .NET formát {0:yyyy-MM-dd HH:mm:ss} přímo na DateTime -->
+
     </DataGrid.Columns>
   </DataGrid>
 
-  <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0"> <!-- formulář pro přidání -->
-    <TextBox x:Name="TxtFirstName" Width="150" Margin="0,0,8,0"/>
-    <TextBox x:Name="TxtLastName"  Width="150" Margin="0,0,8,0"/>
-    <TextBox x:Name="TxtYear"      Width="60"  Margin="0,0,8,0"/>
-    <TextBox x:Name="TxtEmail"     Width="220" Margin="0,0,8,0"/>
-    <Button x:Name="BtnAddStudent" Content="Přidat studenta" Click="BtnAddStudent_Click"/>
+  <!-- Spodní formulář: horizontální panel s textovými poli a tlačítkem -->
+  <StackPanel
+      Grid.Row="1"                      <!-- Umístění do 2. řádku (Auto) -->
+      Orientation="Horizontal"          <!-- Skládá vnitřní prvky zleva doprava -->
+      Margin="0,10,0,0">                <!-- Vnější okraj: Left=0, Top=10, Right=0, Bottom=0 -->
+
+    <!-- TextBox pro Jméno -->
+    <TextBox
+        x:Name="TxtFirstName"           <!-- Jméno pole pro čtení v C# (TxtFirstName.Text) -->
+        Width="150"                     <!-- Pevná šířka vstupu -->
+        Margin="0,0,8,0"/>              <!-- Pravý odstup 8 px od dalšího prvku -->
+
+    <!-- TextBox pro Příjmení -->
+    <TextBox
+        x:Name="TxtLastName"
+        Width="150"
+        Margin="0,0,8,0"/>
+
+    <!-- TextBox pro Ročník
+         (v Úkolu 4 se typicky nahradí ComboBoxem 1–6, zde zatím bez omezení) -->
+    <TextBox
+        x:Name="TxtYear"
+        Width="60"
+        Margin="0,0,8,0"/>
+
+    <!-- TextBox pro E-mail -->
+    <TextBox
+        x:Name="TxtEmail"
+        Width="220"
+        Margin="0,0,8,0"/>
+
+    <!-- Tlačítko pro přidání nového záznamu
+         - Click = název obslužné metody v code-behind (MainWindow.xaml.cs) -->
+    <Button
+        x:Name="BtnAddStudent"
+        Content="Přidat studenta"       <!-- Text na tlačítku -->
+        Click="BtnAddStudent_Click"/>   <!-- Event handler po kliku -->
+
   </StackPanel>
 </Grid>
 ```
@@ -488,19 +645,33 @@ private void BtnAddStudent_Click(object sender, RoutedEventArgs e)
 ```csharp
 private void BtnAddStudent_Click(object sender, RoutedEventArgs e)  // klik na "Přidat studenta"
 {
-    string firstName = (TxtFirstName.Text ?? string.Empty).Trim();   // načti jméno; null → ""
-    string lastName  = (TxtLastName.Text  ?? string.Empty).Trim();   // příjmení
-    string email     = (TxtEmail.Text     ?? string.Empty).Trim();   // e‑mail
-    int year = 1;                                                    // výchozí ročník
-    int.TryParse((TxtYear.Text ?? string.Empty).Trim(), out year);   // převod textu na číslo (když selže, zůstane 1)
+    // Načtení hodnot z formuláře (bez validace):
+    //  - '?? string.Empty' = null-coalescing: když je vlevo null, použije se prázdný řetězec "".
+    //    Díky tomu následující .Trim() nikdy nepadne na NullReferenceException.
+    //  - .Trim() vrátí nový řetězec bez bílých znaků na ZAČÁTKU i na KONCI (mezery, tabulátory, nové řádky).
+    //    Neodstraňuje znaky uprostřed textu.
+    string firstName = (TxtFirstName.Text ?? string.Empty).Trim();   // jméno: ochrana proti null + ořez okrajových mezer
+    string lastName  = (TxtLastName.Text  ?? string.Empty).Trim();   // příjmení: totéž
+    string email     = (TxtEmail.Text     ?? string.Empty).Trim();   // e-mail: totéž
 
+    // Výchozí hodnota ročníku je 1. Pokud parsování selže, zůstane 1 (smysluplná defaultní hodnota).
+    int year = 1;
+
+    // Bezpečný převod textu na int:
+    //  - (TxtYear.Text ?? string.Empty)          → ochrana proti null
+    //  - .Trim()                                  → odstraní okrajové mezery (např. " 2 " → "2")
+    //  - int.TryParse(..., out year)              → zkusí převést; když to nejde, nehodí výjimku a 'year' zůstane 1
+    int.TryParse((TxtYear.Text ?? string.Empty).Trim(), out year);
+
+    // Vytvoří objekt s novým objektem, který následně přidáváme do db.
     var s = new Student                                             // nová entita
     {
+      // FirstName - Je název sloupce v tabulce, kterou jsme si definovali v Student.cs
+      // firstName - Je proměnná, která bere data z XAML
         FirstName = firstName,
         LastName  = lastName,
         Year      = year,
-        Email     = email,
-        CreatedAt = DateTime.UtcNow
+        Email     = email
     };
 
     _db.Students.Add(s);                                            // přidej do kontextu
@@ -508,9 +679,13 @@ private void BtnAddStudent_Click(object sender, RoutedEventArgs e)  // klik na "
 
     _students.Add(s);                                               // doplň do UI kolekce
     StudentsGrid.SelectedItem = s;                                  // označ řádek
-    StudentsGrid.ScrollIntoView(s);                                 // posuň na něj pohled
+    StudentsGrid.ScrollIntoView(s);                                 // Vykresli do UI
 
-    TxtFirstName.Text = TxtLastName.Text = TxtEmail.Text = TxtYear.Text = string.Empty; // vyčisti formulář
+    // Vymaže data v inputech, nastaví je string.Empty
+    TxtFirstName.Text = string.Empty;
+    TxtLastName.Text = string.Empty;
+    TxtEmail.Text = string.Empty;
+    TxtYear.Text = string.Empty; // vyčisti formulář
 }
 ```
 
@@ -645,22 +820,43 @@ private void BtnSave_Click(object sender, RoutedEventArgs e)
 **S komentáři (každý řádek):**
 
 ```csharp
-private void BtnSave_Click(object sender, RoutedEventArgs e)    // klik na "Uložit"
+private void BtnSave_Click(object sender, RoutedEventArgs e)    // obsluha kliknutí na tlačítko "Uložit"
 {
-    var selected = StudentsGrid.SelectedItem as Student;        // zjisti vybraného studenta
-    if (selected != null)                                       // jen pokud je něco vybráno
+    // StudentsGrid.SelectedItem vrátí "aktuálně vybraný řádek" v DataGridu.
+    // Protože DataGrid zobrazuje kolekci Student, očekáváme, že vybraný řádek bude instance Student.
+    // Operátor "as" se POKUSÍ převést (cast) na Student:
+    //  - když to jde → vrátí odkaz typu Student,
+    //  - když to nejde nebo není nic vybráno → vrátí NULL (žádný objekt).
+    var selected = StudentsGrid.SelectedItem as Student;        // vybraný Student NEBO null
+
+    // Ověříme, že opravdu máme nějakého studenta vybraného.
+    // (null znamená "nic", "žádný objekt", tedy není co ukládat/na co se ptát uživatele.)
+    if (selected != null)                                       // pokračuj jen, když je něco vybráno
     {
-        var result = MessageBox.Show(this,                      // potvrzovací dialog
+        // Zobrazíme potvrzovací dialog, do textu doplníme jméno a příjmení vybraného studenta.
+        // MessageBox.Show(ownerWindow, text, caption, buttons, icon)
+        //  - this               → okno, které vlastní dialog (dobré pro modalitu a fokus)
+        //  - string interpolace → $"... {selected.FirstName} {selected.LastName}?"
+        //  - MessageBoxButton.YesNo → zobrazí tlačítka Ano / Ne
+        //  - MessageBoxImage.Question → otazníková ikona
+        var result = MessageBox.Show(this,
             $"Opravdu chcete údaje studenta {selected.FirstName} {selected.LastName}?",
             "Uložit?",
-            MessageBoxButton.YesNo,                             // Ano/Ne
-            MessageBoxImage.Question);                          // ikona otazníku
-        if (result == MessageBoxResult.Yes)                     // potvrzeno?
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        // Vyhodnotíme, co uživatel zvolil v dialogu.
+        if (result == MessageBoxResult.Yes)                     // pokud odpověděl "Ano"
         {
-            _db.SaveChanges();                                  // ulož všechny změny trackované EF
+            // Uložíme všechny dosud neuložené změny, které EF Core sleduje v DbContextu (_db).
+            // EF zjistí, které entity mají změněný stav (Modified/Added/Deleted) a vygeneruje
+            // odpovídající SQL příkazy (UPDATE/INSERT/DELETE) do databáze.
+            _db.SaveChanges();
         }
     }
+    // Když selected == null (nic nevybráno), funkce "tiše" skončí bez dotazu/ukládání.
 }
+
 ```
 
 > **Tip (volitelné):** Když chceš mít jistotu, že DataGrid zrovna rozeditované buňky commitnul, můžeš před uložením volat:
@@ -697,24 +893,49 @@ private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e)
 **S komentáři (každý řádek):**
 
 ```csharp
-private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e) // klik na "Smazat vybraného"
+private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e) // obsluha kliknutí na "Smazat vybraného"
 {
-    var selected = StudentsGrid.SelectedItem as Student;               // aktuálně vybraná položka
-    if (selected != null)                                              // jen když něco vybráno
+    // StudentsGrid.SelectedItem → vrátí aktuálně vybraný řádek v DataGridu.
+    // Každý řádek reprezentuje jednu instanci Student (z ItemsSource).
+    // Operátor "as" se POKUSÍ přetypovat na Student:
+    //   - když je něco vybráno a typ sedí → dostaneme referenci na Student,
+    //   - když není nic vybráno / typ nesedí → dostaneme null (žádný objekt).
+    var selected = StudentsGrid.SelectedItem as Student;   // vybraný Student nebo null
+
+    // Pokud není vybrán žádný řádek (selected == null), nemá smysl pokračovat.
+    if (selected != null)
     {
-        var result = MessageBox.Show(this,                              // potvrzení akce
+        // Potvrzovací dialog před destruktivní akcí (smazání).
+        //  - this = vlastník okna (správná modalita a fokus)
+        //  - interpolace $"... {selected.FirstName} {selected.LastName}" doplní jméno studenta do textu
+        //  - MessageBoxButton.YesNo = zobrazí tlačítka Ano/Ne
+        //  - MessageBoxImage.Question = otazníková ikona
+        var result = MessageBox.Show(this,
             $"Opravdu smazat studenta {selected.FirstName} {selected.LastName}?",
             "Smazat studenta",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
-        if (result == MessageBoxResult.Yes)                             // potvrzeno?
+
+        // Reagujeme jen na volbu Ano (Yes).
+        if (result == MessageBoxResult.Yes)
         {
-            _db.Students.Remove(selected);                              // odeber z kontextu EF
-            _db.SaveChanges();                                          // potvrď v DB
-            _students.Remove(selected);                                 // odeber i z UI kolekce (ihned v DataGridu)
+            // 1) Označíme entitu pro smazání v EF kontextu.
+            //    - EF Core nastaví stav entity na Deleted (Entry.State = Deleted).
+            //    - Smazání se zatím NEprovede v DB; je to jen příprava operace.
+            _db.Students.Remove(selected);
+
+            // 2) Persistujeme změny do databáze:
+            //    - EF vygeneruje DELETE SQL podle primárního klíče (Id) a provede ho proti DB.
+            //    - Pokud má tabulka cizí klíče bez kaskády, může DB smazání odmítnout (FK violation).
+            _db.SaveChanges();
+
+            // 3) Aktualizujeme UI kolekci (ObservableCollection<Student> _students),
+            //    aby DataGrid okamžitě odrážel změnu i v paměti (zmizí řádek bez nutnosti reloadu).
+            _students.Remove(selected);
         }
     }
 }
+
 ```
 
 ---
@@ -724,6 +945,44 @@ private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e) // klik n
 Necháme uživatele **vybrat** hodnotu místo psaní. V mřížce použijeme `DataGridComboBoxColumn`, ve formuláři `ComboBox`.
 
 **XAML (doplnění do Úkolu 3):**
+
+```xml
+<Window xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+  <DataGrid.Columns>
+    <DataGridComboBoxColumn Header="Ročník"
+        SelectedItemBinding="{Binding Year, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+      <DataGridComboBoxColumn.ItemsSource>
+        <x:Array Type="{x:Type sys:Int32}">
+          <sys:Int32>1</sys:Int32>
+          <sys:Int32>2</sys:Int32>
+          <sys:Int32>3</sys:Int32>
+          <sys:Int32>4</sys:Int32>
+          <sys:Int32>5</sys:Int32>
+          <sys:Int32>6</sys:Int32>
+        </x:Array>
+      </DataGridComboBoxColumn.ItemsSource>
+    </DataGridComboBoxColumn>
+  </DataGrid.Columns>
+
+  <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+    <ComboBox x:Name="TxtYear" Width="60" IsEditable="False" SelectedIndex="-1" ToolTip="Vyberte ročník 1–6">
+      <ComboBox.ItemsSource>
+        <x:Array Type="{x:Type sys:Int32}">
+          <sys:Int32>1</sys:Int32>
+          <sys:Int32>2</sys:Int32>
+          <sys:Int32>3</sys:Int32>
+          <sys:Int32>4</sys:Int32>
+          <sys:Int32>5</sys:Int32>
+          <sys:Int32>6</sys:Int32>
+        </x:Array>
+      </ComboBox.ItemsSource>
+    </ComboBox>
+    <!-- ostatní prvky formuláře beze změny -->
+  </StackPanel>
+</Window>
+```
+
+**S komentáři (každý řádek):**
 
 ```xml
 <Window xmlns:sys="clr-namespace:System;assembly=System.Runtime">
