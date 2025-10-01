@@ -73,55 +73,37 @@ namespace WPF_Aplikace_s_db
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            try
+            var selected = StudentsGrid.SelectedItem as Student;
+            if (selected != null)
             {
-                StudentsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-                StudentsGrid.CommitEdit(DataGridEditingUnit.Row, true);
-
-                if (!_db.ChangeTracker.HasChanges())
+                var result = MessageBox.Show(this,
+                    $"Opravdu chcete údaje studenta {selected.FirstName} {selected.LastName}?",
+                    "Uložit?",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (result == MessageBoxResult.Yes)
                 {
-                    MessageBox.Show("Žádné změny k uložení.", "Informace",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
+                    _db.SaveChanges();
                 }
-
-                _db.SaveChanges();
-                MessageBox.Show("Změny byly uloženy.", "Hotovo",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show("Nepodařilo se uložit změny.\n\n" + ex, "Chyba",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e)
         {
             var selected = StudentsGrid.SelectedItem as Student;
-            if (selected == null)
+            if (selected != null)
             {
-                MessageBox.Show("Nejprve vyberte studenta v tabulce.", "Upozornění",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            var answer = MessageBox.Show("Opravdu smazat vybraného studenta?",
-                "Potvrzení", MessageBoxButton.YesNo, MessageBoxImage.Question);
-
-            if (answer != MessageBoxResult.Yes)
-                return;
-
-            _db.Students.Remove(selected);
-            try
-            {
-                _db.SaveChanges();
-                _students.Remove(selected);
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show("Smazání se nepodařilo.\n\n" + ex, "Chyba",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                var result = MessageBox.Show(this,
+                    $"Opravdu smazat studenta {selected.FirstName} {selected.LastName}?",
+                    "Smazat studenta",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (result == MessageBoxResult.Yes)
+                {
+                    _db.Students.Remove(selected);
+                    _db.SaveChanges();
+                    _students.Remove(selected);
+                }
             }
         }
     }
