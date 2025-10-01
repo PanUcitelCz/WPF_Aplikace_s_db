@@ -199,11 +199,11 @@ namespace WPF_Aplikace_s_db.Data             // datová vrstva
         {
             if (!optionsBuilder.IsConfigured)                 // pokud už není nakonfigurováno
             {
-                optionsBuilder.UseSqlServer(                  // SQL Server provider (LocalDB)
-                    "Data Source=(localdb)\\MSSQLLocalDB;" +
-                    "Initial Catalog=StudentDbDemo1;" +
-                    "Integrated Security=True;" +
-                    "TrustServerCertificate=True");
+                optionsBuilder.UseSqlServer(                  // SQL Server provider
+                    "Data Source=(localdb)\\MSSQLLocalDB;" +  // LocalDB instance
+                    "Initial Catalog=StudentDbDemo1;" +       // jméno DB
+                    "Integrated Security=True;" +             // Windows autentizace
+                    "TrustServerCertificate=True");           // bez potíží s certifikátem
             }
         }
 
