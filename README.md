@@ -1020,11 +1020,6 @@ Necháme uživatele **vybrat** hodnotu místo psaní. V mřížce použijeme `Da
 </Window>
 ```
 
-> V code‑behind můžeš dál používat `int.TryParse(TxtYear.Text, out year)` (Text bude naplněný vybraným číslem), nebo přistoupit přímo k hodnotě:
-> ```csharp
-> if (TxtYear.SelectedItem is int y) year = y;
-> ```
-
 ---
 
 ## Jak to celé zapadá
