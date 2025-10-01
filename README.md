@@ -16,7 +16,7 @@ Tento **výukový README** krok‑za‑krokem ukazuje, jak ve Visual Studiu 2022
 ### 0.1 Vytvoření projektu
 
 1. Otevři **Visual Studio 2022**.  
-2. **Create a new project** → vyber **WPF App** (.NET) → **Next**.  
+2. **Create a new project** → vyber **WPF Aplication** (.NET) → **Next**.  
 3. **Project name** zadej např. `WPF_Aplikace_s_db`.  
 4. **Framework** nastav na **.NET 9.0** → **Create**.
 
@@ -25,7 +25,7 @@ Tento **výukový README** krok‑za‑krokem ukazuje, jak ve Visual Studiu 2022
 V **Solution Exploreru** klikni pravým na projekt → **Manage NuGet Packages…** → záložka **Browse** a nainstaluj postupně:
 
 - **Microsoft.EntityFrameworkCore.SqlServer**  
-  Poskytovatel EF Core pro SQL Server (včetně **LocalDB**). Díky němu aplikace mluví se SQL Serverem.
+  Poskytovatel EF Core pro SQL Server (včetně **LocalDB**). Díky němu aplikace mluví s SQL Serverem.
 
 - **Microsoft.EntityFrameworkCore.Tools**  
   Design‑time nástroje EF (pomáhají s migracemi a návrhem). I když tu používáme `EnsureCreated`, hodí se do budoucna.
